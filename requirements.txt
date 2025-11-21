@@ -1,0 +1,9 @@
+groq==0.3.0
+sentence-transformers==2.2.2
+aiohttp==3.8.5
+beautifulsoup4==4.12.2
+yt-dlp==2023.11.14
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.7
+asyncpg==0.28.0
+python-multipart==0.0.6
