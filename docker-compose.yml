@@ -1,0 +1,214 @@
+version: '3.9'
+
+services:
+  # ============================================================================
+  # DATABASE
+  # ============================================================================
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: cortex_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cortex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cortex_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-radiocortex}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cortex}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # CACHE & QUEUE
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: cortex_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: cortex_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-cortex}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-cortex_dev_password}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # RADIO CORTEX - MAIN APPLICATION
+  # ============================================================================
+  cortex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: cortex_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cortex}:${POSTGRES_PASSWORD:-cortex_dev_password}@postgres:5432/${POSTGRES_DB:-radiocortex}
+      
+      # Cache
+      REDIS_URL: redis://redis:6379/0
+      
+      # Queue
+      CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-cortex}:${RABBITMQ_PASSWORD:-cortex_dev_password}@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      
+      # API Keys (use secrets in production!)
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      
+      # Storage
+      OCI_STORAGE_BUCKET: ${OCI_STORAGE_BUCKET:-radiocasa13-audio}
+      OCI_STORAGE_NAMESPACE: ${OCI_STORAGE_NAMESPACE}
+      OCI_STORAGE_REGION: ${OCI_STORAGE_REGION:-sa-saopaulo-1}
+      
+      # App Config
+      ENVIRONMENT: development
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      DEBUG: ${DEBUG:-true}
+      
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_key_change_in_production}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Mount source code for hot reload
+      - ./agents:/app/agents
+      - ./api:/app/api
+      - ./models:/app/models
+      - ./services:/app/services
+      - ./config:/app/config
+      
+      # Mount downloads directory
+      - cortex_downloads:/tmp/hunter_downloads
+      
+      # Mount logs
+      - ./logs:/app/logs
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # CELERY WORKERS (Background Tasks)
+  # ============================================================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: cortex_celery_worker
+    restart: unless-stopped
+    depends_on:
+      - cortex
+      - rabbitmq
+      - redis
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cortex}:${POSTGRES_PASSWORD:-cortex_dev_password}@postgres:5432/${POSTGRES_DB:-radiocortex}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-cortex}:${RABBITMQ_PASSWORD:-cortex_dev_password}@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./agents:/app/agents
+      - ./services:/app/services
+      - cortex_downloads:/tmp/hunter_downloads
+      - ./logs:/app/logs
+    command: celery -A services.queue worker --loglevel=info --concurrency=2
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: cortex_celery_beat
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - redis
+    environment:
+      CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-cortex}:${RABBITMQ_PASSWORD:-cortex_dev_password}@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./agents:/app/agents
+      - ./services:/app/services
+      - ./logs:/app/logs
+    command: celery -A services.queue beat --loglevel=info
+
+  # ============================================================================
+  # MONITORING (Optional, comment out if not needed)
+  # ============================================================================
+  # flower:
+  #   image: mher/flower:latest
+  #   container_name: cortex_flower
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - rabbitmq
+  #     - redis
+  #   environment:
+  #     CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-cortex}:${RABBITMQ_PASSWORD:-cortex_dev_password}@rabbitmq:5672//
+  #     CELERY_RESULT_BACKEND: redis://redis:6379/1
+  #   ports:
+  #     - "5555:5555"
+
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: cortex_pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@radiocasa13.org
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - "5050:80"
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  cortex_downloads:
+  # pgadmin_data:
+
+networks:
+  default:
+    name: cortex_network
