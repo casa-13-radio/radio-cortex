@@ -1,6 +1,6 @@
 # models/track.py
-from sqlalchemy import Column, String, Text, Integer, BigInteger, DateTime, Boolean, ARRAY, JSONB, CheckConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Column, String, Text, Integer, BigInteger, DateTime, Boolean, CheckConstraint
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid

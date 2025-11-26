@@ -1,6 +1,6 @@
 # models/artist.py - CORRIGIDO
-from sqlalchemy import Column, String, Text, ARRAY, Integer, BigInteger
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Column, String, Text, Integer, BigInteger
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import relationship
 import uuid
 
