@@ -54,14 +54,24 @@ RUN pip install --user --no-cache-dir \
     pyyaml==6.0.3 \
     python-dotenv==1.2.1
 
-# IMPORTANTE: sentence-transformers separado para cache
+# Instalar PyTorch CPU (dependência do sentence-transformers) - ~200MB
+RUN pip install --user --no-cache-dir \
+    torch==2.1.2 --index-url https://download.pytorch.org/whl/cpu
+
+# Instalar sentence-transformers separado
 RUN pip install --user --no-cache-dir sentence-transformers==5.1.2
 
-# Baixar modelo de embedding no BUILDER (camada separada para cache otimizado)
-RUN echo "📦 Downloading embedding model (all-MiniLM-L6-v2)..." && \
-    python -c "from sentence_transformers import SentenceTransformer; \
-    model = SentenceTransformer('all-MiniLM-L6-v2'); \
-    print(f'✅ Model cached successfully at: {model.cache_folder()}')"
+# Baixar modelo de embedding com error handling
+RUN echo "📦 Downloading embedding model (all-MiniLM-L6-v2 - ~90MB)..." && \
+    python -c "\
+import sys; \
+print('Testing imports...'); \
+from sentence_transformers import SentenceTransformer; \
+print('✓ Imports OK'); \
+print('Downloading model...'); \
+model = SentenceTransformer('all-MiniLM-L6-v2'); \
+print('✅ Model downloaded and cached successfully'); \
+" || (echo "❌ Model download failed - check logs above" && exit 1)
 
 # =============================================================================
 # PRODUCTION STAGE - Imagem final
@@ -79,12 +89,10 @@ RUN groupadd -r cortex && useradd -r -g cortex cortex
 # Copiar código da aplicação
 COPY --chown=cortex:cortex . .
 
-# Criar diretórios necessários
+# Criar diretórios necessários e ajustar permissões
 RUN mkdir -p /tmp/hunter_downloads /app/logs && \
-    chown -R cortex:cortex /tmp/hunter_downloads /app/logs
-
-# Ajustar permissões do cache do modelo para o usuário cortex
-RUN chown -R cortex:cortex /root/.cache || true
+    chown -R cortex:cortex /tmp/hunter_downloads /app/logs && \
+    chown -R cortex:cortex /root/.cache 2>/dev/null || true
 
 USER cortex
 
