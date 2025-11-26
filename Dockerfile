@@ -1,44 +1,31 @@
 # Dockerfile
-FROM python:3.11-slim as base
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies apenas para produção
 RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install poetry
+# Copy pyproject.toml
+COPY pyproject.toml .
 
-# Copy project files
-COPY pyproject.toml poetry.lock* ./
+# Install production dependencies only
+RUN pip install --no-cache-dir -e .[production]
 
-# Install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
-
-# Copy source code
+# Copy application code
 COPY . .
 
-FROM base as development
-
-# Install development dependencies
-RUN poetry install --no-interaction --no-ansi
+# Create directories
+RUN mkdir -p /tmp/hunter_downloads /app/logs
 
 # Expose port
 EXPOSE 8000
 
-# Command for development
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-FROM base as production
-
-# Copy only necessary files for production
-COPY --from=base /app /app
-
-# Expose port
-EXPOSE 8000
-
-# Command for production
-CMD ["gunicorn", "api.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
+# Default command
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

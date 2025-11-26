@@ -1,0 +1,10 @@
+radio_cortex.egg-info
+__pycache__/
+.env
+.env.*
+.venv/
+*.sqlite3
+*.db
+*.log
+.coverage
+htmlcov/
