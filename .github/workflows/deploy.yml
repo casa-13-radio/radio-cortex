@@ -1,67 +1,107 @@
-# .github/workflows/deploy.yml
-name: Deploy Radio Cortex
+name: 🚀 Build, Test, Push, and Deploy Radio Cortex
 
 on:
   push:
-    branches: [main, develop]
-  workflow_dispatch:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  PYTHON_VERSION: '3.13'
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: 🛠️ Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    - name: 📦 Install dependencies from pyproject.toml
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        # Se tiver dependências de desenvolvimento no pyproject.toml
+        pip install -e ".[dev]" || echo "No dev extras found"
 
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+    - name: 🔍 Lint with ruff
+      run: |
+        ruff check app/ tests/
+      continue-on-error: true
 
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ~/radio
-            
-            echo "🚀 Updating Radio Cortex..."
-            
-            # Pull latest image
-            docker-compose pull cortex
-            
-            # Restart cortex service
-            docker-compose up -d cortex
-            
-            # Wait for service to start
-            sleep 10
-            
-            # Run migrations
-            docker-compose exec -T cortex alembic upgrade head || echo "Migrations completed or not needed"
-            
-            # Health check
-            echo "✅ Cortex deployed successfully!"
+    - name: 🧪 Run tests with pytest
+      env:
+        INTERNAL_API_TOKEN: test-token-for-ci-cd-automated-tests-min-32-chars
+        S3_ENDPOINT_URL: https://fake-s3.com
+        S3_ACCESS_KEY: fake_key
+        S3_SECRET_KEY: fake_secret
+        S3_BUCKET_NAME: fake_bucket
+        USE_DATABASE: true
+        DATABASE_URL: sqlite+aiosqlite:///./test.db
+      run: |
+        pytest -v --cov=app --cov-report=xml --cov-report=term-missing
+
+    - name: 📊 Upload coverage
+      uses: codecov/codecov-action@v4
+      if: github.event_name == 'push'
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+      continue-on-error: true
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: 🛠️ Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔑 Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🏗️ Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ env.IMAGE_NAME }}:latest
+        cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
+        cache-to: type=inline
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: 🚀 Deploy to VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd ~/radio
+          echo "📦 Pulling Radio Cortex..."
+          docker-compose pull cortex
+          echo "🚀 Deploying..."
+          docker-compose up -d --no-deps --force-recreate cortex
+          echo "⏳ Waiting for service to start..."
+          sleep 20
+          echo "✅ Radio Cortex deployed successfully!"

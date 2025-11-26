@@ -1,6 +1,6 @@
-# models/artist.py
+# models/artist.py - CORRIGIDO
 from sqlalchemy import Column, String, Text, ARRAY, Integer, BigInteger
-from sqlalchemy.dialects.postgresql import JSONB, UUID  
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -18,7 +18,7 @@ class Artist(Base):
     country = Column(String(2))
     website_url = Column(Text)
     social_links = Column(JSONB)
-    metadata = Column(JSONB)
+    artist_metadata = Column(JSONB)
     track_count = Column(Integer, default=0)
     total_plays = Column(BigInteger, default=0)
 

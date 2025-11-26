@@ -33,7 +33,7 @@ def upgrade():
         sa.Column('country', sa.String(length=2), nullable=True),
         sa.Column('website_url', sa.Text(), nullable=True),
         sa.Column('social_links', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('metadata', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('artist_metadata', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column('track_count', sa.Integer(), server_default=sa.text('0'), nullable=True),
         sa.Column('total_plays', sa.BigInteger(), server_default=sa.text('0'), nullable=True),
         sa.PrimaryKeyConstraint('id')
