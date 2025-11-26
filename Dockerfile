@@ -57,13 +57,20 @@ RUN pip install --user --no-cache-dir \
 # IMPORTANTE: sentence-transformers separado para cache
 RUN pip install --user --no-cache-dir sentence-transformers==5.1.2
 
+# Baixar modelo de embedding no BUILDER (camada separada para cache otimizado)
+RUN echo "📦 Downloading embedding model (all-MiniLM-L6-v2)..." && \
+    python -c "from sentence_transformers import SentenceTransformer; \
+    model = SentenceTransformer('all-MiniLM-L6-v2'); \
+    print(f'✅ Model cached successfully at: {model.cache_folder()}')"
+
 # =============================================================================
 # PRODUCTION STAGE - Imagem final
 # =============================================================================
 FROM base as production
 
-# Copiar apenas dependências Python (não o código de build)
+# Copiar dependências Python E modelo de embedding
 COPY --from=builder /root/.local /root/.local
+COPY --from=builder /root/.cache /root/.cache
 ENV PATH=/root/.local/bin:$PATH
 
 # Criar usuário não-root
@@ -76,9 +83,8 @@ COPY --chown=cortex:cortex . .
 RUN mkdir -p /tmp/hunter_downloads /app/logs && \
     chown -R cortex:cortex /tmp/hunter_downloads /app/logs
 
-# Baixar modelo de embedding DURANTE O BUILD (não no runtime!)
-# Isso evita download de 500MB toda vez que o container sobe
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" || true
+# Ajustar permissões do cache do modelo para o usuário cortex
+RUN chown -R cortex:cortex /root/.cache || true
 
 USER cortex
 
