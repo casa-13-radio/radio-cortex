@@ -30,10 +30,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar apenas pyproject.toml primeiro (melhor cache)
-COPY pyproject.toml ./
+# Criar usuário cortex no BUILDER para instalar dependências no lugar certo
+RUN groupadd -r cortex && useradd -r -g cortex -m -d /home/cortex cortex
 
-# Instalar dependências de produção (SEM dev dependencies)
+# Mudar para o usuário cortex
+USER cortex
+
+# Copiar apenas pyproject.toml primeiro (melhor cache)
+COPY --chown=cortex:cortex pyproject.toml /home/cortex/
+
+WORKDIR /home/cortex
+
+# Instalar dependências de produção no HOME do usuário cortex
 RUN pip install --user --no-cache-dir \
     fastapi==0.122.0 \
     uvicorn[standard]==0.38.0 \
@@ -79,28 +87,36 @@ print('✅ Model downloaded and cached successfully'); \
 # =============================================================================
 FROM base as production
 
-# Copiar dependências Python E modelo de embedding
-COPY --from=builder /root/.local /root/.local
-COPY --from=builder /root/.cache /root/.cache
-ENV PATH=/root/.local/bin:$PATH
+# Criar usuário cortex na imagem final
+RUN groupadd -r cortex && useradd -r -g cortex -m -d /home/cortex cortex
 
-# Criar usuário não-root
-RUN groupadd -r cortex && useradd -r -g cortex cortex
+# Copiar dependências Python E modelo de embedding do BUILDER
+# Tudo já está em /home/cortex/.local e /home/cortex/.cache
+COPY --from=builder --chown=cortex:cortex /home/cortex/.local /home/cortex/.local
+COPY --from=builder --chown=cortex:cortex /home/cortex/.cache /home/cortex/.cache
+
+# Configurar ambiente para o usuário cortex
+ENV PATH=/home/cortex/.local/bin:$PATH \
+    HOME=/home/cortex \
+    PYTHONPATH=/app
+
+# Mudar para o diretório da aplicação
+WORKDIR /app
 
 # Copiar código da aplicação
 COPY --chown=cortex:cortex . .
 
-# Criar diretórios necessários e ajustar permissões
+# Criar diretórios necessários
 RUN mkdir -p /tmp/hunter_downloads /app/logs && \
-    chown -R cortex:cortex /tmp/hunter_downloads /app/logs && \
-    chown -R cortex:cortex /root/.cache 2>/dev/null || true
+    chown -R cortex:cortex /tmp/hunter_downloads /app/logs
 
+# Mudar para usuário não-root
 USER cortex
 
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Comando padrão
