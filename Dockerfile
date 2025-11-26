@@ -54,11 +54,12 @@ RUN pip install --user --no-cache-dir \
     pyyaml==6.0.3 \
     python-dotenv==1.2.1
 
-# Instalar PyTorch CPU (dependência do sentence-transformers) - ~200MB
+# Instalar PyTorch CPU + transformers compatíveis
+# PyTorch 2.5+ é necessário para transformers 4.46+
 RUN pip install --user --no-cache-dir \
-    torch==2.1.2 --index-url https://download.pytorch.org/whl/cpu
+    torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
 
-# Instalar sentence-transformers separado
+# Instalar sentence-transformers (vai instalar transformers compatível automaticamente)
 RUN pip install --user --no-cache-dir sentence-transformers==5.1.2
 
 # Baixar modelo de embedding com error handling
