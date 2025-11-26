@@ -1,6 +1,6 @@
 # models/track.py
 from sqlalchemy import Column, String, Text, Integer, BigInteger, DateTime, Boolean, ARRAY, JSONB, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -36,6 +36,7 @@ class Track(Base):
     # Relacionamentos
     artist = relationship("Artist", back_populates="tracks")
     license = relationship("License", back_populates="tracks")
+    embeddings = relationship("TrackEmbedding", back_populates="track", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(

@@ -1,6 +1,6 @@
 # models/artist.py
-from sqlalchemy import Column, String, Text, ARRAY, JSONB, Integer, BigInteger
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Text, ARRAY, Integer, BigInteger
+from sqlalchemy.dialects.postgresql import JSONB, UUID  
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -22,5 +22,4 @@ class Artist(Base):
     track_count = Column(Integer, default=0)
     total_plays = Column(BigInteger, default=0)
 
-    # Relacionamento com tracks
     tracks = relationship("Track", back_populates="artist")

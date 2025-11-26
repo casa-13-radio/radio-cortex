@@ -87,6 +87,15 @@ class LibrarianAgent:
         track.embedding = embedding
         track.status = "pending_compliance"  # Next stage
         
+        # Step 4: Save embedding in TrackEmbedding table
+        from models.track_embedding import TrackEmbedding
+        track_embedding = TrackEmbedding(
+            track_id=track.id,
+            embedding=embedding,
+            model_version=settings.librarian_embedding_model
+        )
+        self.session.add(track_embedding)
+        
         await self.session.commit()
         self.logger.info(f"✅ Enriched: {track.title} - Genre: {track.primary_genre}")
     
