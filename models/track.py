@@ -1,5 +1,4 @@
-# models/track.py
-from sqlalchemy import Column, String, Text, Integer, BigInteger, DateTime, Boolean, CheckConstraint
+from sqlalchemy import Column, String, Text, Integer, BigInteger, DateTime, Boolean, CheckConstraint, ForeignKey
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -12,9 +11,9 @@ class Track(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(500), nullable=False)
-    artist_id = Column(UUID(as_uuid=True), nullable=False)
+    artist_id = Column(UUID(as_uuid=True), ForeignKey('artists.id', ondelete='CASCADE'), nullable=False)
     album = Column(String(500))
-    license_id = Column(UUID(as_uuid=True), nullable=False)
+    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id', ondelete='RESTRICT'), nullable=False)
     audio_url = Column(Text, nullable=False)
     duration_seconds = Column(Integer, nullable=False)
     bitrate_kbps = Column(Integer)
