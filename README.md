@@ -1,39 +1,53 @@
-# Radio Cortex
+# Cortex — IA para Curadoria Cultural
 
-AI-powered curation agents for Creative Commons music.
+> Sistema de agentes inteligentes para descoberta, análise e curadoria
+> de música com licenças abertas
 
-## Overview
+## Agentes
 
-Radio Cortex is a multi-agent system for discovering, classifying, and curating Creative Commons music. It consists of autonomous agents that work together to build a rich catalog of legally streamable music.
+| Agente | Função | Status |
+|--------|--------|--------|
+| 🔍 Coletor | Busca músicas em Free Music Archive, Jamendo, etc | 🟢 Ativo |
+| 📊 Analista | Extrai metadados via MusicBrainz/Discogs | 🟢 Ativo |
+| ⚖️ Jurídico | Verifica licenças Creative Commons | 🟡 Beta |
+| 🎵 Curador | Gera playlists temáticas com GPT | 🟡 Beta |
+| 📈 Tendências | Analisa padrões de escuta | 🔴 Planejado |
 
-## Agents
+## Arquitetura
 
-- **Hunter**: Discovers and collects CC-licensed music from various sources (Archive.org, Jamendo, etc.)
-- **Librarian**: Enriches track metadata using AI (LLM for classification, embeddings for similarity)
-- **Compliance Officer**: Validates license compliance (planned)
-- **Taste-Maker**: Generates intelligent playlists (planned)
+```
+┌───────────────┐     ┌──────────────┐     ┌───────────┐
+│   API Radio   │────▶│    Cortex    │────▶│  Redis    │
+│   (FastAPI)   │     │ (Orquestrador)│    │  (Filas)  │
+└───────────────┘     └──────────────┘     └───────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+        ┌──────────┐   ┌───────────┐   ┌──────────┐
+        │MusicBrainz│   │  OpenAI   │   │ Jamendo  │
+        │   API    │   │   API     │   │   API    │
+        └──────────┘   └───────────┘   └──────────┘
+```
 
-## Architecture
+## Requisitos
 
-The system is built with:
+- Python 3.11+
+- Redis
+- Chave de API: OpenAI (para curadoria avançada)
 
-- **Python 3.11** with AsyncIO
-- **FastAPI** for the REST API
-- **PostgreSQL** with pgvector for vector similarity search
-- **Redis** for caching
-- **Docker** for containerization
+## Variáveis de ambiente
 
-## Quick Start
+```bash
+DATABASE_URL=postgresql://user:pass@localhost:5432/radio
+REDIS_URL=redis://localhost:6379
+OPENAI_API_KEY=sk-...  # Opcional, para agente Curador
+MUSICBRAINZ_USER_AGENT=RadioCasa13/1.0
+```
 
-### Prerequisites
+## Por que não modelos locais?
 
-- Docker and Docker Compose
-- Python 3.11+ (for local development)
-- Groq API key (for Librarian agent)
-
-### Development
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/radio-cortex
-   cd radio-cortex
+Optamos por APIs externas porque:
+1. Rodamos em Oracle Free Tier (recursos limitados)
+2. Custo de API é negligível para nosso volume (~$5/mês)
+3. Manutenção de modelos locais é complexa
+4. Foco do projeto é curadoria, não infraestrutura de ML
